@@ -98,71 +98,62 @@ void removeReg(){
 bool getFile(HINTERNET connection, LPCWCHAR path, const char * filename){
 	HANDLE fileHandle = CreateFileA(filename,GENERIC_WRITE,FILE_SHARE_READ,NULL,CREATE_ALWAYS,0,0);
 	if(fileHandle == INVALID_HANDLE_VALUE){
-		printf( "Error - download failed for %s Error %u\n", filename, GetLastError());
+		printf( "Error - CreateFileA failed for %s Error %u\n", filename, GetLastError());
 		return false;
 	}
 
 	// Create an HTTP Request handle.
 	HINTERNET hRequest = NULL;
-	if (connection){
-		hRequest = WinHttpOpenRequest( connection, L"GET", path, 
+	hRequest = WinHttpOpenRequest( connection, L"GET", path, 
 				NULL, WINHTTP_NO_REFERER, WINHTTP_DEFAULT_ACCEPT_TYPES,0);
-	}else{
-		printf("Error - WinHttpConnect %u \n", GetLastError());
-		return false;
-	}
-	BOOL  bResults = FALSE;
-	if (hRequest){
-		bResults = WinHttpSendRequest( hRequest, NULL, 0, NULL, 0, 0, 0);
-	}else {
-		printf( "Error - WinHttpOpenRequest %u .\n", GetLastError());
+	if (!hRequest) {
+		printf("Error - WinHttpOpenRequest %u \n", GetLastError());
 		return false;
 	}
 
-	if (bResults){
-		bResults = WinHttpReceiveResponse( hRequest, NULL);
-	}else {
+	BOOL  bResults = FALSE;
+	bResults = WinHttpSendRequest( hRequest, NULL, 0, NULL, 0, 0, 0);
+	if (!bResults) {
 		printf( "Error - WinHttpSendRequest %u .\n", GetLastError());
 		return false;
 	}
-	if(bResults == FALSE){
+
+	bResults = WinHttpReceiveResponse( hRequest, NULL);
+	if (!bResults) {
 		printf( "Error - WinHttpReceiveResponse %u .\n", GetLastError());
 		return false;
 	}
+	
 	// Check status code
 	DWORD dwStatusCode = 0;
 	DWORD dwTemp = sizeof(dwStatusCode);
 	bResults = WinHttpQueryHeaders( hRequest, WINHTTP_QUERY_STATUS_CODE | WINHTTP_QUERY_FLAG_NUMBER,
                  NULL, &dwStatusCode, &dwTemp, NULL );
-	if(dwStatusCode != HTTP_STATUS_OK) {
-		printf( "Error - HTTP status code %u .\n", dwStatusCode);
-		return false;
-	}
 	if (!bResults){
 		printf( "Error - WinHttpQueryHeaders %u .\n", GetLastError());
+		return false;
+	}
+	if(dwStatusCode != HTTP_STATUS_OK) {
+		printf( "Error - HTTP status code %u .\n", dwStatusCode);
 		return false;
 	}
 
 	//Read data
 	DWORD numBytes;
-	if (bResults){
-		while(WinHttpQueryDataAvailable(hRequest, &numBytes) != FALSE && numBytes > 0){
-			PCHAR outBuf = new char[numBytes];
-			if (!outBuf){
-				printf( "Error - out of memory\n");
-				return false;
-			} else {
-				DWORD numDown;
-				if (!WinHttpReadData( hRequest, (LPVOID)outBuf, numBytes, &numDown))
-					printf( "Error %u in WinHttpReadData.\n", GetLastError());
-				WriteFile(fileHandle, outBuf, numDown, &numBytes, NULL);
-				delete [] outBuf;
-			}
+	while(WinHttpQueryDataAvailable(hRequest, &numBytes) != FALSE && numBytes > 0){
+		PCHAR outBuf = new char[numBytes];
+		if (!outBuf){
+			printf( "Error - out of memory\n");
+			return false;
+		} else {
+			DWORD numDown;
+			if (!WinHttpReadData( hRequest, (LPVOID)outBuf, numBytes, &numDown))
+				printf( "Error %u in WinHttpReadData.\n", GetLastError());
+			WriteFile(fileHandle, outBuf, numDown, &numBytes, NULL);
+			delete [] outBuf;
 		}
-	} else {
-		printf( "Error %u in WinHttpReceiveResponse.\n", GetLastError());
-		return false;
 	}
+	
 	if (hRequest) WinHttpCloseHandle(hRequest);
 	CloseHandle(fileHandle);
 	return true;
@@ -194,13 +185,7 @@ void doUpdate(){
 	for(size -= 1; filename[size] != '\\' && size != 0; size--)
 		filename[size] = 0;
 	SetCurrentDirectoryA(filename);
-	cout << filename << endl;
 
-	//Now download new config
-	HINTERNET hSession = NULL,
-	hConnect = NULL;
-	hSession = WinHttpOpen(  L"Ambush IPS Client", WINHTTP_ACCESS_TYPE_DEFAULT_PROXY,
-			WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0);
 	//Get reporting server
 	WCHAR server[257];
 	CHAR serverc[257];
@@ -216,13 +201,22 @@ void doUpdate(){
 	}
 	mbstowcs_s(&len, server, serverc, strlen(serverc));
 
-	// Connect to the HTTP server.
-	if (hSession){
-		hConnect = WinHttpConnect( hSession, server, SERVER_PORT, 0);
-	}else {
+	//Now download new config
+	HINTERNET hSession = NULL,
+	hConnect = NULL;
+	hSession = WinHttpOpen(  L"Ambush IPS Client", WINHTTP_ACCESS_TYPE_DEFAULT_PROXY,
+			WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0);
+	if (!hSession) {
 		printf( "Error - WinHttpOpen %u .\n", GetLastError());
 		return;
 	}
+	// Connect to the HTTP server.
+	hConnect = WinHttpConnect( hSession, server, SERVER_PORT, 0);
+	if (!hConnect) {
+		printf( "Error - WinHttpConnect %u .\n", GetLastError());
+		return;
+	}
+		
 	//Get signature set
 	length = sizeof(DWORD);
 	DWORD sigset;
@@ -291,8 +285,8 @@ void doUpdate(){
 			MoveFileA(TEMP_SIG_FILE, SIG_FILE);
 		}
 	//if the code updates fail to download
-	}else if(getFile(hConnect, L"/installer.msi", "installer.msi") == false
-			|| getFile(hConnect, L"/installer_sig", "installer.sig") == false){
+	}else if(!getFile(hConnect, L"/installer.msi", "installer.msi")
+			|| !getFile(hConnect, L"/installer_sig", "installer.sig")){
 		printf( "Error - cannot get signature for code update!\n");
 	//if code verification fails
 	}else if(CreateProcessA(NULL,"openssl.exe dgst -sha1 -verify pub.key -signature installer.sig installer.msi",
