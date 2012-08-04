@@ -10,16 +10,27 @@ void dumpLog(HANDLE inputHandle){
 	SYSTEMTIME systime;
 	FILETIME filetime;
 	DWORD read;
-	if(ReadFile(inputHandle, &filetime, sizeof(filetime), &read, NULL) == FALSE || read != sizeof(filetime))
+
+	if(inputHandle == INVALID_HANDLE_VALUE) {
+		cerr << "Could not open log file" << endl;
 		return;
-	if(FileTimeToSystemTime(&filetime, &systime))
+	}
+
+	if(ReadFile(inputHandle, &filetime, sizeof(filetime), &read, NULL) == FALSE || read != sizeof(filetime)) {
+		// End of log reached
+		return;
+	}
+
+	if(FileTimeToSystemTime(&filetime, &systime)) 
 		wcout << systime.wYear << "-" << systime.wMonth << "-" << systime.wDay << " " << systime.wHour 
 		<< ":" << systime.wMinute << ":" << systime.wSecond << "." << systime.wMilliseconds; //get time
 
 	// Then get full message
 	HOOKAPI_MESSAGE message;
-	if(ReadFile(inputHandle, &message, sizeof(message), &read, NULL) == FALSE || read != sizeof(message))
+	if(ReadFile(inputHandle, &message, sizeof(message), &read, NULL) == FALSE || read != sizeof(message)) {
+		cerr << "Corrupt log message" << endl;
 		return;
+	}
 	PBYTE contents = new BYTE[message.length + 2];
 	memcpy(contents, &message, sizeof(message));
 	// if length > size - position it will overflow
