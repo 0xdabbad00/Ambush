@@ -449,7 +449,6 @@ int main(int argc, char** argv){
 		DWORD sigset = atoi(argv[3]);
 		if(RegSetValueExA(settingsKey, "SignatureSet", NULL, REG_DWORD, (PBYTE)&sigset, sizeof(sigset)) != ERROR_SUCCESS)
 			cerr << "Could not set signature set " << GetLastError() << endl;
-		cout << "Ambush client configured to use server " << argv[2] << " and signature set " << argv[3];
 
 	}else if(command.compare("uninstall") == 0 || command.compare("/Uninstall") == 0){ //UNINSTALL
 		//Replace keys
